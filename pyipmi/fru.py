@@ -99,23 +99,23 @@ class Fru(object):
         count = data[1] * 8
         return self.read_fru_data(offset=offset, count=count, fru_id=fru_id)
 
-    def get_fru_chassis_area(self, fru_id=0):
+    def get_fru_chassis_area(self, fru_id=0, ignore_format_version=False):
         header = self.get_fru_inventory_header(fru_id=fru_id)
         data = self._read_fru_area(offset=header.chassis_info_area_offset,
                                    fru_id=fru_id)
-        return InventoryChassisInfoArea(data)
+        return InventoryChassisInfoArea(data, ignore_format_version)
 
-    def get_fru_board_area(self, fru_id=0):
+    def get_fru_board_area(self, fru_id=0, ignore_format_version=False):
         header = self.get_fru_inventory_header(fru_id=fru_id)
         data = self._read_fru_area(offset=header.board_info_area_offset,
                                    fru_id=fru_id)
-        return InventoryBoardInfoArea(data)
+        return InventoryBoardInfoArea(data, ignore_format_version)
 
-    def get_fru_product_area(self, fru_id=0):
+    def get_fru_product_area(self, fru_id=0, ignore_format_version=False):
         header = self.get_fru_inventory_header(fru_id=fru_id)
         data = self._read_fru_area(offset=header.product_info_area_offset,
                                    fru_id=fru_id)
-        return InventoryProductInfoArea(data)
+        return InventoryProductInfoArea(data, ignore_format_version)
 
     def get_fru_multirecord_area(self, fru_id=0):
         header = self.get_fru_inventory_header(fru_id=fru_id)
@@ -139,21 +139,27 @@ class Fru(object):
         data = self.read_fru_data(offset=offset, count=count)
         return InventoryMultiRecordArea(data)
 
-    def get_fru_inventory(self, fru_id=0):
+    def get_fru_inventory(self, fru_id=0, ignore_format_version=False):
         """
         Get the full parsed FRU inventory data.
         """
-        fru = FruInventory()
+        fru = FruInventory(ignore_format_version=ignore_format_version)
         header = self.get_fru_inventory_header(fru_id=fru_id)
 
         if header.chassis_info_area_offset:
-            fru.chassis_info_area = self.get_fru_chassis_area(fru_id=fru_id)
+            fru.chassis_info_area = self.get_fru_chassis_area(
+                fru_id=fru_id,
+                ignore_format_version=ignore_format_version)
 
         if header.board_info_area_offset:
-            fru.board_info_area = self.get_fru_board_area(fru_id=fru_id)
+            fru.board_info_area = self.get_fru_board_area(
+                fru_id=fru_id,
+                ignore_format_version=ignore_format_version)
 
         if header.product_info_area_offset:
-            fru.product_info_area = self.get_fru_product_area(fru_id=fru_id)
+            fru.product_info_area = self.get_fru_product_area(
+                fru_id=fru_id,
+                ignore_format_version=ignore_format_version)
 
         if header.multirecord_area_offset:
             fru.multirecord_area = self.get_fru_multirecord_area(fru_id=fru_id)
@@ -190,7 +196,8 @@ def _decode_custom_fields(data):
 
 
 class FruData(object):
-    def __init__(self, data=None):
+    def __init__(self, data=None, ignore_format_version=False):
+        self.ignore_format_version = ignore_format_version
         if data:
             if isinstance(data, str):
                 data = [ord(c) for c in data]
@@ -216,7 +223,7 @@ class InventoryCommonHeader(FruData):
 class CommonInfoArea(FruData):
     def _from_data(self, data):
         self.format_version = data[0] & 0x0f
-        if self.format_version != 1:
+        if not self.ignore_format_version and self.format_version != 1:
             raise DecodingError('unsupported format version (%d)' %
                                 self.format_version)
         self.length = data[1] * 8
@@ -423,11 +430,12 @@ class InventoryMultiRecordArea(object):
 
 
 class FruInventory(object):
-    def __init__(self, data=None):
+    def __init__(self, data=None, ignore_format_version=False):
         self.chassis_info_area = None
         self.board_info_area = None
         self.product_info_area = None
         self.multirecord_area = None
+        self.ignore_format_version = ignore_format_version
 
         if data:
             self._from_data(data)
@@ -438,15 +446,18 @@ class FruInventory(object):
 
         if self.common_header.chassis_info_area_offset:
             self.chassis_info_area = InventoryChassisInfoArea(
-                data[self.common_header.chassis_info_area_offset:])
+                data[self.common_header.chassis_info_area_offset:],
+                ignore_format_version=self.ignore_format_version)
 
         if self.common_header.board_info_area_offset:
             self.board_info_area = InventoryBoardInfoArea(
-                data[self.common_header.board_info_area_offset:])
+                data[self.common_header.board_info_area_offset:],
+                ignore_format_version=self.ignore_format_version)
 
         if self.common_header.product_info_area_offset:
             self.product_info_area = InventoryProductInfoArea(
-                data[self.common_header.product_info_area_offset:])
+                data[self.common_header.product_info_area_offset:],
+                ignore_format_version=self.ignore_format_version)
 
         if self.common_header.multirecord_area_offset:
             self.multirecord_area = InventoryMultiRecordArea(
